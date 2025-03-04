@@ -1,12 +1,12 @@
-package main
+package server
 
 import (
 	"fmt"
 	"os"
 	"strings"
-	"vmwar/vars"
-	"vmwar/virtual_ops"
-	"vmwar/virtual_ops/vbox"
+	"vmwar/server/vars"
+	"vmwar/server/virtual_ops"
+	"vmwar/server/virtual_ops/vbox"
 )
 
 var vmName string = "VMwar-Client"
