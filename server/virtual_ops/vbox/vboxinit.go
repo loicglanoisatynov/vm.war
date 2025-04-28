@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"vmwar/vars"
+	"vmwar/server/vars"
 )
 
 func Get_vbox_path() {

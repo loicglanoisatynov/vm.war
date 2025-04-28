@@ -1,8 +1,8 @@
 package virtual_ops
 
 import (
-	"vmwar/vars/logs"
-	"vmwar/virtual_ops/vbox"
+	"vmwar/server/vars/logs"
+	"vmwar/server/virtual_ops/vbox"
 )
 
 var hypervisor string

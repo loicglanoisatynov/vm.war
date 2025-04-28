@@ -1,18 +1,29 @@
-package server
+package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
+	server "vmwar/server"
 	"vmwar/server/vars"
 	"vmwar/server/virtual_ops"
 	"vmwar/server/virtual_ops/vbox"
+	vms "vmwar/server/virtual_ops/vm"
+	vnets "vmwar/server/virtual_ops/vnets"
 )
 
 var vmName string = "VMwar-Client"
 
 func main() {
 	init_vmwar(os.Args)
+
+	// vnets.Load_vnets_from_vbox()
+	vnets.Wipe_vnets()
+	vms.Wipe_vms()
+
+	http.HandleFunc("/", server.Serve)
+	http.ListenAndServe(":8080", nil)
 }
 
 func init_vmwar(args []string) {

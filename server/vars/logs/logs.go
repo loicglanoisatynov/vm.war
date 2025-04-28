@@ -2,7 +2,7 @@ package logs
 
 import (
 	"fmt"
-	"vmwar/vars"
+	"vmwar/server/vars"
 )
 
 func Throw(function_caller string, message string, varsToEnumerate map[string]string) {

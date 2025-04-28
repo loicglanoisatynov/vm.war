@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
-	"vmwar/vars"
-	"vmwar/vars/logs"
+	"vmwar/server/vars"
+	"vmwar/server/vars/logs"
 )
 
 func ExecuteCommand(command string) string {
