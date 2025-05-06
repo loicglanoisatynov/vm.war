@@ -45,7 +45,7 @@ func Post_v_network(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("V-network created : ", request.Username)
 	fmt.Println("Creating VMs...")
 
-	err = vms.Create_vms(request.Username)
+	err = vms.Create_vms(request.Username, Vnet.Name)
 	if err != nil {
 		fmt.Fprintln(w, err)
 		return

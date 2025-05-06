@@ -13,15 +13,20 @@ import (
 	vnets "vmwar/server/virtual_ops/vnets"
 )
 
+var green string = "\033[32m"
+var white string = "\033[0m"
 var vmName string = "VMwar-Client"
 
 func main() {
+	// Nettoie le terminal
+	fmt.Print("\033[H\033[2J")
 	init_vmwar(os.Args)
 
 	// vnets.Load_vnets_from_vbox()
 	vnets.Wipe_vnets()
 	vms.Wipe_vms()
 
+	fmt.Println(green + "VMWar booted and ready to go !" + white)
 	http.HandleFunc("/", server.Serve)
 	http.ListenAndServe(":8080", nil)
 }

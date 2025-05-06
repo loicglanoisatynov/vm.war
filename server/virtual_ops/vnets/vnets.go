@@ -24,14 +24,14 @@ var Vnets []Vnet
 
 func Wipe_vnets() {
 	Vnets = Load_vnets_from_vbox()
-	fmt.Println("Wiping Vnets...")
+	// fmt.Println("Deleting Vnets...")
 	for _, vnet := range Vnets {
 		Delete_v_network(vnet.Name)
 	}
 }
 
 func Load_vnets_from_vbox() []Vnet {
-	fmt.Println("Loading Vnets from VirtualBox...")
+	// fmt.Println("Loading Vnets from VirtualBox...")
 	cmd, err := exec.Command(vars.Get_hypervisor_path(), "natnetwork", "list").Output()
 
 	if err != nil {
@@ -102,7 +102,7 @@ func Get_vnets() string {
 func Delete_v_network(vnet_name string) error {
 
 	full_vnet_name := vnet_name
-	fmt.Println("Deleting Vnet: ", full_vnet_name)
+	// fmt.Println("Deleting Vnet: ", full_vnet_name)
 
 	_, err := exec.Command(vars.Get_hypervisor_path(), "natnetwork", "remove", "--netname", full_vnet_name).Output()
 	if err != nil {

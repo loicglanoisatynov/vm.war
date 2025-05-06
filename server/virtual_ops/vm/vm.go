@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"strings"
 	"vmwar/server/vars"
-	"vmwar/server/virtual_ops/vnets"
 )
 
 type Vm struct {
@@ -24,22 +23,19 @@ func (vm Vm) Set_VM_Name(new_vm_name string) {
 	vm.name = new_vm_name
 }
 
-func Create_vms(vnet_name string) error {
-	fmt.Println("func Create_vms")
+func Create_vms(vnet_owner string, vnet_name string) error {
 	// Create VMs
 	vm1 := Vm{
 		// id:
-		name: vnet_name + "_vm1",
+		name: vnet_owner + "_vm1",
 		ip:   "10.0.2.1",
 	}
 	vm2 := Vm{
-		name: vnet_name + "_vm2",
+		name: vnet_owner + "_vm2",
 		ip:   "10.0.2.2",
 	}
 	fmt.Println("VM1 name: ", vm1.name)
 	fmt.Println("VM2 name: ", vm2.name)
-
-	fmt.Println("Preparing to launch commands...")
 
 	bytes_copied, err := copy("./server/virtual_ops/vm/Metasploitable3-ub1404-Origin.ova", "./VMs/"+vm1.name+".ova")
 	if err != nil {
@@ -73,18 +69,41 @@ func Create_vms(vnet_name string) error {
 	}
 
 	_, err = exec.Command("VBoxManage", "import", "./VMs/"+vm1.name+".ova", "--vsys", "0", "--vmname", vm1.name, "--basefolder", "./VMs/"+vm1.name+"/").Output()
-	// _, err = exec.Command("VBoxManage", "import", "./VMs/"+vm1.name+".ova").Output()
 	if err != nil {
 		fmt.Println("Error importing VM:", err)
+	} else {
+		fmt.Printf("VM %s imported successfully\n", vm1.name)
 	}
 
 	_, err = exec.Command("VBoxManage", "import", "./VMs/"+vm2.name+".ova", "--vsys", "0", "--vmname", vm2.name).Output()
-	// _, err = exec.Command("VBoxManage", "import", "./VMs/"+vm2.name+".ova").Output()
 	if err != nil {
 		fmt.Println("Error importing VM:", err)
+	} else {
+		fmt.Printf("VM %s imported successfully\n", vm2.name)
 	}
 
 	fmt.Println("VMs imported")
+
+	_, err = exec.Command("VBoxManage", "modifyvm", vm1.name, "--nic"+"1", "natnetwork", "--nat-network1", vnet_name).Output()
+	if err != nil {
+		fmt.Println("Error modifying VM:", err)
+	}
+
+	_, err = exec.Command("VBoxManage", "modifyvm", vm2.name, "--nic"+"1", "natnetwork", "--nat-network1", vnet_name).Output()
+	if err != nil {
+		fmt.Println("Error modifying VM:", err)
+	}
+
+	_, err = exec.Command("VBoxManage", "modifyvm", vm1.name, "--nic"+"2", "none").Output()
+	if err != nil {
+		fmt.Println("Error modifying VM:", err)
+	}
+
+	_, err = exec.Command("VBoxManage", "modifyvm", vm2.name, "--nic"+"2", "none").Output()
+	if err != nil {
+		fmt.Println("Error modifying VM:", err)
+	}
+
 	return nil
 }
 
@@ -143,7 +162,7 @@ func Load_vms_from_vbox() []Vm {
 				name: vm_name,
 				// ip:   vm_id,
 			})
-			fmt.Println("VM name: ", vm_name)
+			// fmt.Println("VM name: ", vm_name)
 		}
 	}
 	return vms
@@ -151,31 +170,24 @@ func Load_vms_from_vbox() []Vm {
 
 func Wipe_vms() {
 	// TODO effacer les VMs avec VBoxManage
-	vnets := vnets.Load_vnets_from_vbox()
 	vms := Load_vms_from_vbox()
-	fmt.Println("vms: ", vms)
-	fmt.Println("vnets: ", vnets)
-	fmt.Println("Deleting VMs...")
 	for _, vm := range vms {
-		fmt.Println("Deleting VMs for vnet: ", vm.name)
-		fmt.Println("Deleting VMs: ", vm.name, " and ", vm.name)
-		_, err := exec.Command("VBoxManage", "controlvm", vm.name, "poweroff").Output()
+		// _, err := exec.Command("VBoxManage", "controlvm", vm.name, "poweroff").Output()
+		// if err != nil {
+		// 	fmt.Println("1Error deleting VM:", err)
+		// }
+		// _, err = exec.Command("VBoxManage", "controlvm", vm.name, "poweroff").Output()
+		// if err != nil {
+		// 	fmt.Println("2Error deleting VM:", err)
+		// }
+		_, err := exec.Command("VBoxManage", "unregistervm", vm.name, "--delete").Output()
 		if err != nil {
-			fmt.Println("Error deleting VM:", err)
+			fmt.Println("3Error deleting VM:", err)
 		}
-		_, err = exec.Command("VBoxManage", "controlvm", vm.name, "poweroff").Output()
-		if err != nil {
-			fmt.Println("Error deleting VM:", err)
-		}
-		_, err = exec.Command("VBoxManage", "unregistervm", vm.name, "--delete").Output()
-		if err != nil {
-			fmt.Println("Error deleting VM:", err)
-		}
-		_, err = exec.Command("VBoxManage", "unregistervm", vm.name, "--delete").Output()
-		if err != nil {
-			fmt.Println("Error deleting VM:", err)
-		}
-		fmt.Println("VMs deleted")
+		// _, err = exec.Command("VBoxManage", "unregistervm", vm.name, "--delete").Output()
+		// if err != nil {
+		// 	fmt.Println("4Error deleting VM:", err)
+		// }
 	}
 	// TODO effacer les fichiers de VMs
 
@@ -203,7 +215,4 @@ func Wipe_vms() {
 			}
 		}
 	}
-
-	fmt.Println("All VMs deleted")
-	fmt.Println("All VMs files deleted")
 }
