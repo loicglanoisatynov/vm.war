@@ -21,6 +21,7 @@ func Test_Handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Test Handler")
 }
 
+// Créée un réseau virtuel
 func Post_v_network(w http.ResponseWriter, r *http.Request) {
 	var request Post_vnet_request
 

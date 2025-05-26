@@ -6,6 +6,7 @@ import (
 	vnets "vmwar/server/virtual_ops/vnets"
 )
 
+// Récupère la liste des réseaux virtuels
 func Get_v_networks(w http.ResponseWriter, r *http.Request) {
 	for _, vnet := range vnets.Load_vnets_from_vbox() {
 		fmt.Fprintf(w, "%s\n", vnet.Get_v_network())
