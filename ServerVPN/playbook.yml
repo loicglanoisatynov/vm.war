@@ -1,0 +1,321 @@
+- name: Installation de OpenVPN et Easy-RSA
+  hosts: all
+  become: yes
+
+  vars:
+    username: vagrant
+    home_dir: "/home/vagrant"
+    easyrsa_dir: "{{ home_dir }}/easy-rsa"
+    client_config_dir: "{{ home_dir }}/client-configs"
+    client_key_dir: "{{ client_config_dir }}/keys"
+    public_interface: eth0
+    vpn_subnet: 10.8.0.0/8
+    client_name: client1
+
+  tasks:
+    - name: Mettre à jour les paquets
+      apt:
+        update_cache: yes
+
+    - name: Installer OpenVPN et Easy-RSA
+      apt:
+        name:
+          - openvpn
+          - easy-rsa
+          - git
+        state: present
+
+    - name: Créer le dossier easy-rsa
+      file:
+        path: "{{ easyrsa_dir }}"
+        state: directory
+        owner: "{{ username }}"
+        mode: '700'
+
+    - name: Copier Easy-RSA dans le dossier utilisateur
+      copy:
+        src: "/usr/share/easy-rsa/"
+        dest: "{{ easyrsa_dir }}/"
+        owner: "{{ username }}"
+        mode: "0755"
+      #remote_src: yes
+
+    - name: Ajouter le fichier vars personnalisé
+      copy:
+        dest: "{{ easyrsa_dir }}/vars"
+        content: |
+          set_var EASYRSA_ALGO "ec"
+          set_var EASYRSA_DIGEST "sha512"
+        owner: "{{ username }}"
+        mode: '0644'
+
+    - name: Initialiser le PKI
+      command: ./easyrsa init-pki
+      args:
+        chdir: "{{ easyrsa_dir }}"
+
+    - name: Générer la CA sans mot de passe
+      command: ./easyrsa build-ca nopass
+      args:
+        chdir: "{{ easyrsa_dir }}"
+
+    - name: Copier ca.key dans le dossier OpenVPN
+      copy:
+        src: "{{ easyrsa_dir }}/pki/ca.crt"
+        dest: /usr/local/share/ca-certificates
+        remote_src: yes
+        mode: '0600'
+        become: yes
+    
+    - name: Mettre à jour le certificat 
+      command: update-ca-certificates
+      become: yes
+
+    - name: Générer requête + clé privée serveur VPN
+      command: ./easyrsa gen-req vagrant nopass
+      args:
+        chdir: "{{ easyrsa_dir }}"
+      become: yes
+
+    - name: Importer la clé
+      command: ./easyrsa import-req /home/vagrant/easy-rsa/pki/reqs/vagrant.req server
+
+    - name: Signer la requête serveur VPN
+      command: ./easyrsa sign-req server server
+      args:
+        chdir: "{{ easyrsa_dir }}"
+      become: yes
+      environment:
+        EASYRSA_BATCH: "1"
+
+    - name: Copier les certificats et clés serveur
+      copy:
+        remote_src: yes
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: '0600'
+      loop:
+        - { src: "{{ easyrsa_dir }}/pki/issued/server.crt", dest: "/etc/openvpn/server/server.crt" }
+        - { src: "{{ easyrsa_dir }}/pki/private/server.key", dest: "/etc/openvpn/server/server.key" }
+        - { src: "{{ easyrsa_dir }}/pki/ca.crt", dest: "/etc/openvpn/server/ca.crt" }
+
+    - name: Générer le fichier ta.key (TLS Auth)
+      command: openvpn --genkey --secret ta.key
+      args:
+        chdir: "{{ easyrsa_dir }}"
+      become: yes
+
+    - name: Copier ta.key dans le dossier OpenVPN
+      copy:
+        src: "{{ easyrsa_dir }}/ta.key"
+        dest: /etc/openvpn/server/ta.key
+        remote_src: yes
+        mode: '0600'
+
+    - name: Créer le dossier client-configs
+      file:
+        path: "{{ client_configs_dir }}"
+        state: directory
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0700'
+
+    - name: Créer le dossier keys
+      file:
+        path: "{{ client_config_dir }}/keys"
+        state: directory
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0700'    
+
+    - name: Créer la conf client-configs/keys
+      file:
+        path: "{{ client_key_dir }}"
+        state: directory
+        mode: '0700'
+        owner: "{{ username }}"
+        group: "{{ username }}"
+
+    - name: Générer une requête client (client1)
+      command: ./easyrsa gen-req client1 nopass
+      args:
+        chdir: "{{ easyrsa_dir }}"
+      become: yes
+
+    - name: Signer la requête client1
+      command: ./easyrsa sign-req client client1
+      args:
+        chdir: "{{ easyrsa_dir }}"
+      become: yes
+      environment:
+        EASYRSA_BATCH: "1"
+
+    - name: Copier clés et certificats client dans le dossier dédié
+      copy:
+        remote_src: yes
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: "{{ username }}"
+        group: "{{ username }}"
+        mode: '0600'
+      loop:
+        - { src: "{{ easyrsa_dir }}/pki/private/client1.key", dest: "{{ client_key_dir }}/client1.key" }
+        - { src: "{{ easyrsa_dir }}/pki/issued/client1.crt", dest: "{{ client_key_dir }}/client1.crt" }
+        - { src: "{{ easyrsa_dir }}/ta.key", dest: "{{ client_key_dir }}/ta.key" }
+        - { src: "/etc/openvpn/server/ca.crt", dest: "{{ client_key_dir }}/ca.crt" }
+
+    - name: Changer le propriétaire des clés client
+      file:
+        path: "{{ client_key_dir }}"
+        state: directory
+        recurse: yes
+        owner: "{{ username }}"
+        group: "{{ username }}"
+
+    - name: Copier le fichier de configuration serveur OpenVPN exemple
+      copy:
+        src: "/usr/share/doc/openvpn/examples/sample-config-files/server.conf.gz"
+        dest: "/etc/openvpn/server/server.conf.gz"
+        remote_src: yes
+
+    - name: Décompresser le fichier de configuration
+      command: gunzip -f /etc/openvpn/server/server.conf.gz
+
+    - name: Modifier la configuration d’OpenVPN (ajuster les options)
+      lineinfile:
+        path: /etc/openvpn/server/server.conf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: '^;tls-auth ta.key 0', line: 'tls-crypt ta.key' }
+        - { regexp: '^;cipher AES-256-CBC', line: 'cipher AES-256-GCM' }
+        - { regexp: '^;auth SHA256', line: 'auth SHA256' }
+        - { regexp: '^;dh dh2048.pem', line: 'dh none' }
+
+    - name: Ajouter l'IP forwarding sur le serveur VPN
+      ansible.builtin.lineinfile:
+        path: /etc/sysctl.conf
+        line: 'net.ipv4.ip_forward = 1'
+    
+    - name: Mettre à jour le paramètre 
+      command: sudo sysctl -p
+
+    - name: Vérifier que UFW est présent
+      apt:
+        name: ufw
+        state: present
+
+    - name: Accepter le port UDP pour OpenVPN
+      ufw:
+        rule: allow
+        port: 1194
+        proto: udp
+
+    - name: Accepte le SSH
+      ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: Ajouter le NAT à OpenVPN
+      blockinfile:
+        path: /etc/ufw/before.rules
+        marker: "# {mark} ANSIBLE OPENVPN RULES"
+        insertbefore: "^\filter"
+        block: |
+          # START OPENVPN RULES
+          *nat
+          :POSTROUTING ACCEPT [0:0]
+          -A POSTROUTING -s {{ vpn_subnet }} -o {{ public_interface }} -j MASQUERADE
+          COMMIT
+          # END OPENVPN RULES
+
+    - name: Changer la route par défaut
+      lineinfile:
+        path: /etc/default/ufw
+        regexp: '^DEFAULT_FORWARD_POLICY='
+        line: 'DEFAULT_FORWARD_POLICY="ACCEPT"'
+
+    - name: Accepte UFW
+      ufw:
+        state: enabled
+        policy: allow
+        direction: incoming
+
+    - name: Lance OpenVPN au boot
+      systemd:
+        name: openvpn-server@server
+        enabled: true
+
+    - name: Lancer OpenVPN
+      systemd:
+        name: openvpn-server@server
+        state: started
+
+    - name: Créer lle dossier de configutation client
+      file:
+        path: "/home/{{ user_name }}/client-configs/files"
+        state: directory
+        mode: '0700'
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
+        recurse: yes
+
+    - name: Copier le fichier par défaut du client
+      copy:
+        src: /usr/share/doc/openvpn/examples/sample-config-files/client.conf
+        dest: "/home/{{ user_name }}/client-configs/base.conf"
+        remote_src: yes
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
+        mode: '0644'
+
+    - name: Configure base.conf
+      blockinfile:
+        path: "/home/{{ user_name }}/client-configs/base.conf"
+        marker: "# {mark} ANSIBLE CONFIG"
+        block: |
+          remote your_server_ip 1194
+          proto udp
+          user nobody
+          group nogroup
+          ;ca ca.crt
+          ;cert {{ client_name }}.crt
+          ;key {{ client_name }}.key
+          ;tls-auth ta.key 1
+          cipher AES-256-GCM
+          auth SHA256
+          key-direction 1
+          ; script-security 2
+          ; up /etc/openvpn/update-resolv-conf
+          ; down /etc/openvpn/update-resolv-conf
+          ; script-security 2
+          ; up /etc/openvpn/update-systemd-resolved
+          ; down /etc/openvpn/update-systemd-resolved
+          ; down-pre
+          ; dhcp-option DOMAIN-ROUTE .
+
+    - name: Créer make_config.sh 
+      copy:
+        dest: "/home/{{ user_name }}/client-configs/make_config.sh"
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
+        mode: '0700'
+        content: |
+          #!/bin/bash
+          
+          KEY_DIR=~/client-configs/keys
+          OUTPUT_DIR=~/client-configs/files
+          BASE_CONFIG=~/client-configs/base.conf
+          
+          cat ${BASE_CONFIG} \
+              <(echo -e '<ca>') \
+              ${KEY_DIR}/ca.crt \
+              <(echo -e '</ca>\n<cert>') \
+              ${KEY_DIR}/${1}.crt \
+              <(echo -e '</cert>\n<key>') \
+              ${KEY_DIR}/${1}.key \
+              <(echo -e '</key>\n<tls-crypt>') \
+              ${KEY_DIR}/ta.key \
+              <(echo -e '</tls-crypt>') \
+              > ${OUTPUT_DIR}/${1}.ovpn
