@@ -8,7 +8,7 @@
     easyrsa_dir: "{{ home_dir }}/easy-rsa"
     client_config_dir: "{{ home_dir }}/client-configs"
     client_key_dir: "{{ client_config_dir }}/keys"
-    public_interface: eth0
+    public_interface: enp0s3
     vpn_subnet: 10.8.0.0/8
     client_name: client1
 
@@ -30,15 +30,14 @@
         path: "{{ easyrsa_dir }}"
         state: directory
         owner: "{{ username }}"
-        mode: '700'
+        mode: '777'
 
     - name: Copier Easy-RSA dans le dossier utilisateur
       copy:
         src: "/usr/share/easy-rsa/"
         dest: "{{ easyrsa_dir }}/"
         owner: "{{ username }}"
-        mode: "0755"
-      #remote_src: yes
+        mode: "777"
 
     - name: Ajouter le fichier vars personnalisé
       copy:
@@ -47,41 +46,62 @@
           set_var EASYRSA_ALGO "ec"
           set_var EASYRSA_DIGEST "sha512"
         owner: "{{ username }}"
-        mode: '0644'
+        mode: '777'
 
     - name: Initialiser le PKI
-      command: ./easyrsa init-pki
+      ansible.builtin.shell:
+        cmd: ./easyrsa init-pki
+        chdir: "{{ easyrsa_dir }}"
+    
+    - name: Changer les droits sur le dossier PKI
+      command:  sudo chmod 777 pki
       args:
         chdir: "{{ easyrsa_dir }}"
+      become: true      
+
+    - name: Changer les droits dans le dossier PKI
+      ansible.builtin.shell:  sudo chmod 777 pki/*
+      args:
+        chdir: "{{ easyrsa_dir }}"
+      become: true     
+
+    - name: Changer les droits sur le dossier PKI
+      ansible.builtin.shell:  sudo chmod 777 *
+      args:
+        chdir: "{{ easyrsa_dir }}/pki/"
+      become: true     
+
 
     - name: Générer la CA sans mot de passe
-      command: ./easyrsa build-ca nopass
+      ansible.builtin.shell: sudo ./easyrsa build-ca nopass <<< "yes"
       args:
         chdir: "{{ easyrsa_dir }}"
+        executable: /bin/bash
+      environment:
+        RANDFILE: /dev/null
 
     - name: Copier ca.key dans le dossier OpenVPN
       copy:
         src: "{{ easyrsa_dir }}/pki/ca.crt"
         dest: /usr/local/share/ca-certificates
         remote_src: yes
-        mode: '0600'
-        become: yes
+        mode: '777'
     
     - name: Mettre à jour le certificat 
       command: update-ca-certificates
       become: yes
 
     - name: Générer requête + clé privée serveur VPN
-      command: ./easyrsa gen-req vagrant nopass
+      ansible.builtin.shell: sudo ./easyrsa gen-req server nopass <<< "server"
       args:
         chdir: "{{ easyrsa_dir }}"
-      become: yes
-
-    - name: Importer la clé
-      command: ./easyrsa import-req /home/vagrant/easy-rsa/pki/reqs/vagrant.req server
+        executable: /bin/bash
+      become: true
+      environment:
+        RANDFILE: /dev/null
 
     - name: Signer la requête serveur VPN
-      command: ./easyrsa sign-req server server
+      ansible.builtin.shell: ./easyrsa sign-req server server
       args:
         chdir: "{{ easyrsa_dir }}"
       become: yes
@@ -93,10 +113,10 @@
         remote_src: yes
         src: "{{ item.src }}"
         dest: "{{ item.dest }}"
-        mode: '0600'
+        mode: '777'
       loop:
         - { src: "{{ easyrsa_dir }}/pki/issued/server.crt", dest: "/etc/openvpn/server/server.crt" }
-        - { src: "{{ easyrsa_dir }}/pki/private/server.key", dest: "/etc/openvpn/server/server.key" }
+        - { src: "{{ easyrsa_dir }}/pki/private/server.key", dest: "/etc/openvpn/server/" }
         - { src: "{{ easyrsa_dir }}/pki/ca.crt", dest: "/etc/openvpn/server/ca.crt" }
 
     - name: Générer le fichier ta.key (TLS Auth)
@@ -114,7 +134,7 @@
 
     - name: Créer le dossier client-configs
       file:
-        path: "{{ client_configs_dir }}"
+        path: "{{ client_config_dir }}"
         state: directory
         owner: "{{ username }}"
         group: "{{ username }}"
@@ -126,26 +146,28 @@
         state: directory
         owner: "{{ username }}"
         group: "{{ username }}"
-        mode: '0700'    
+        mode: '777'    
 
     - name: Créer la conf client-configs/keys
       file:
         path: "{{ client_key_dir }}"
         state: directory
-        mode: '0700'
+        mode: '777'
         owner: "{{ username }}"
         group: "{{ username }}"
 
     - name: Générer une requête client (client1)
-      command: ./easyrsa gen-req client1 nopass
+      ansible.builtin.shell: sudo ./easyrsa gen-req client1 nopass <<< "client1" 
       args:
         chdir: "{{ easyrsa_dir }}"
+        executable: /bin/bash      
       become: yes
 
     - name: Signer la requête client1
-      command: ./easyrsa sign-req client client1
+      ansible.builtin.shell: sudo ./easyrsa sign-req client client1 <<< "yes"
       args:
         chdir: "{{ easyrsa_dir }}"
+        executable: /bin/bash      
       become: yes
       environment:
         EASYRSA_BATCH: "1"
@@ -179,7 +201,7 @@
         remote_src: yes
 
     - name: Décompresser le fichier de configuration
-      command: gunzip -f /etc/openvpn/server/server.conf.gz
+      ansible.builtin.shell: gunzip -f /etc/openvpn/server/server.conf.gz
 
     - name: Modifier la configuration d’OpenVPN (ajuster les options)
       lineinfile:
@@ -189,9 +211,16 @@
         state: present
       loop:
         - { regexp: '^;tls-auth ta.key 0', line: 'tls-crypt ta.key' }
+        - { regexp: '^tls-auth ta.key 0', line: ';tls-auth ta.key 0' }        
         - { regexp: '^;cipher AES-256-CBC', line: 'cipher AES-256-GCM' }
         - { regexp: '^;auth SHA256', line: 'auth SHA256' }
         - { regexp: '^;dh dh2048.pem', line: 'dh none' }
+        - { regexp: '^dh dh2048.pem', line: ';dh dh2048.pem' }
+        - { regexp: '^;push "redirect-gateway def1 bypass-dhcp"', line: 'push "redirect-gateway def1 bypass-dhcp"' }
+        - { regexp: '^;push "dhcp-option DNS 208.67.222.222"', line: 'push "dhcp-option DNS 208.67.222.222"' }
+        - { regexp: '^;push "dhcp-option DNS 208.67.220.220"', line: 'push "dhcp-option DNS 208.67.220.220"' }
+
+
 
     - name: Ajouter l'IP forwarding sur le serveur VPN
       ansible.builtin.lineinfile:
@@ -199,7 +228,7 @@
         line: 'net.ipv4.ip_forward = 1'
     
     - name: Mettre à jour le paramètre 
-      command: sudo sysctl -p
+      ansible.builtin.shell: sudo sysctl -p
 
     - name: Vérifier que UFW est présent
       apt:
@@ -252,27 +281,27 @@
         name: openvpn-server@server
         state: started
 
-    - name: Créer lle dossier de configutation client
+    - name: Créer le dossier de configutation client
       file:
-        path: "/home/{{ user_name }}/client-configs/files"
+        path: "/home/{{ username }}/client-configs/files"
         state: directory
         mode: '0700'
-        owner: "{{ user_name }}"
-        group: "{{ user_name }}"
+        owner: "{{ username }}"
+        group: "{{ username }}"
         recurse: yes
 
     - name: Copier le fichier par défaut du client
       copy:
         src: /usr/share/doc/openvpn/examples/sample-config-files/client.conf
-        dest: "/home/{{ user_name }}/client-configs/base.conf"
+        dest: "/home/{{ username }}/client-configs/base.conf"
         remote_src: yes
-        owner: "{{ user_name }}"
-        group: "{{ user_name }}"
+        owner: "{{ username }}"
+        group: "{{ username }}"
         mode: '0644'
 
     - name: Configure base.conf
       blockinfile:
-        path: "/home/{{ user_name }}/client-configs/base.conf"
+        path: "/home/{{ username }}/client-configs/base.conf"
         marker: "# {mark} ANSIBLE CONFIG"
         block: |
           remote your_server_ip 1194
@@ -297,9 +326,9 @@
 
     - name: Créer make_config.sh 
       copy:
-        dest: "/home/{{ user_name }}/client-configs/make_config.sh"
-        owner: "{{ user_name }}"
-        group: "{{ user_name }}"
+        dest: "/home/{{ username }}/client-configs/make_config.sh"
+        owner: "{{ username }}"
+        group: "{{ username }}"
         mode: '0700'
         content: |
           #!/bin/bash
@@ -319,3 +348,4 @@
               ${KEY_DIR}/ta.key \
               <(echo -e '</tls-crypt>') \
               > ${OUTPUT_DIR}/${1}.ovpn
+    
