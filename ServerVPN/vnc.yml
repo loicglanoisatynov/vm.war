@@ -1,0 +1,86 @@
+---
+- name: Installation et configuration VNC + XFCE + noVNC
+  hosts: clone-test
+  become: true
+
+  vars:
+    vnc_password: "ProjetInfra"
+
+  tasks:
+
+  - name: Met à jour la liste des paquets
+    apt:
+      update_cache: yes
+
+  - name: Installe XFCE et TightVNC
+    apt:
+      name:
+        - xfce4
+        - tightvncserver
+        - git
+        - python3-pip
+      state: present
+
+  - name: Supprime l'ancien profil VNC s'il existe
+    file:
+      path: /home/{{ ansible_user }}/.vnc
+      state: absent
+    become: false
+
+  - name: Crée le mot de passe VNC
+    expect:
+      command: tightvncserver
+      responses:
+        "Password:": "{{ vnc_password }}"
+        "Verify:": "{{ vnc_password }}"
+        "Would you like to enter a view-only password (y/n)?": "n"
+    become: false
+
+  - name: Arrête la session VNC existante
+    shell: tightvncserver -kill :1
+    ignore_errors: yes
+    become: false
+
+  - name: Crée le répertoire .vnc si nécessaire
+    file:
+      path: /home/{{ ansible_user }}/.vnc
+      state: directory
+      mode: '0755'
+    become: false
+
+  - name: Crée le script xstartup
+    copy:
+      dest: /home/{{ ansible_user }}/.vnc/xstartup
+      content: |
+        #!/bin/sh
+        export XKL_XMODMAP_DISABLE=1
+        unset SESSION_MANAGER
+        unset DBUS_SESSION_BUS_ADDRESS
+        exec startxfce4
+      mode: '0755'
+    become: false
+
+  - name: Redémarre le serveur VNC avec résolution 1024x768
+    shell: tightvncserver :1 -geometry 1024x768 -depth 24
+    become: false
+
+  - name: Installe websockify via pip3
+    pip:
+      name: websockify
+      extra_args: "--break-system-packages"
+
+  - name: Clone le dépôt noVNC
+    git:
+      repo: https://github.com/novnc/noVNC.git
+      dest: /home/{{ ansible_user }}/noVNC
+    become: false
+
+  - name: Arrête les éventuelles instances de websockify
+    shell: pkill -f websockify || true
+
+  - name: Démarre Websockify en arrière-plan
+    shell: |
+      nohup websockify --web /home/{{ ansible_user }}/noVNC 6080 localhost:5901 &
+    args:
+      executable: /bin/bash
+    become: false

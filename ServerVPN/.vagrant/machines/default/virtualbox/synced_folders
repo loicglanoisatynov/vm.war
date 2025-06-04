@@ -1,0 +1,1 @@
+{"virtualbox":{"/home/vagrant/link_folder":{"guestpath":"/home/vagrant/link_folder","hostpath":"C:/Users/adrie/Documents/vm.war","disabled":false,"__vagrantfile":true},"/vagrant":{"guestpath":"/vagrant","hostpath":"C:/Users/adrie/Documents/vm.war/ServerVPN","disabled":false,"__vagrantfile":true}}}
