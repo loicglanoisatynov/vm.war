@@ -104,7 +104,30 @@ func Create_vms(vnet_owner string, vnet_name string) error {
 		fmt.Println("Error modifying VM:", err)
 	}
 
+	change_vm_cpu_count(vm1.name, 4)
+	change_vm_cpu_count(vm2.name, 4)
+	change_vm_ram_size(vm1.name, 4096)
+	change_vm_ram_size(vm2.name, 4096)
+
 	return nil
+}
+
+func change_vm_cpu_count(vm_name string, cpu_count int) {
+	_, err := exec.Command("VBoxManage", "modifyvm", vm_name, "--cpus", fmt.Sprintf("%d", cpu_count)).Output()
+	if err != nil {
+		fmt.Printf("Error changing CPU count for VM %s: %v\n", vm_name, err)
+	} else {
+		fmt.Printf("CPU count for VM %s changed to %d\n", vm_name, cpu_count)
+	}
+}
+
+func change_vm_ram_size(vm_name string, ram_size int) {
+	_, err := exec.Command("VBoxManage", "modifyvm", vm_name, "--memory", fmt.Sprintf("%d", ram_size)).Output()
+	if err != nil {
+		fmt.Printf("Error changing RAM size for VM %s: %v\n", vm_name, err)
+	} else {
+		fmt.Printf("RAM size for VM %s changed to %d MB\n", vm_name, ram_size)
+	}
 }
 
 func copy(src, dst string) (int64, error) {
